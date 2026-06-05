@@ -30,6 +30,7 @@ export function MobileChartStack({
   const deltaSeriesRef = useRef<ISeriesApi<'Candlestick'> | null>(null);
   const syncingRef = useRef(false);
   const cleanupSyncRef = useRef<(() => void) | null>(null);
+  const cleanupDeltaTimeSyncRef = useRef<(() => void) | null>(null);
 
   const [mainChart, setMainChart] = useState<IChartApi | null>(null);
   const [mainSeries, setMainSeries] = useState<ISeriesApi<'Candlestick'> | null>(null);
@@ -38,7 +39,7 @@ export function MobileChartStack({
     cleanupSyncRef.current?.();
     cleanupSyncRef.current = null;
 
-    const charts = [mainChartRef.current, volumeChartRef.current, deltaChartRef.current].filter(
+    const charts = [mainChartRef.current, volumeChartRef.current].filter(
       Boolean,
     ) as IChartApi[];
     if (charts.length < 2) return;
@@ -71,6 +72,27 @@ export function MobileChartStack({
     };
   }
 
+  function applyDeltaTimeSync() {
+    cleanupDeltaTimeSyncRef.current?.();
+    cleanupDeltaTimeSyncRef.current = null;
+
+    const main = mainChartRef.current;
+    const delta = deltaChartRef.current;
+    if (!main || !delta) return;
+
+    const syncDeltaToMainTime = () => {
+      const range = main.timeScale().getVisibleRange();
+      if (!range) return;
+      try { delta.timeScale().setVisibleRange(range); } catch { /* chart may be mid-unmount */ }
+    };
+
+    main.timeScale().subscribeVisibleTimeRangeChange(syncDeltaToMainTime);
+    cleanupDeltaTimeSyncRef.current = () => {
+      try { main.timeScale().unsubscribeVisibleTimeRangeChange(syncDeltaToMainTime); } catch { /* chart may be mid-unmount */ }
+    };
+    requestAnimationFrame(syncDeltaToMainTime);
+  }
+
   useEffect(() => {
     if (!showVolume) {
       volumeChartRef.current = null;
@@ -83,8 +105,11 @@ export function MobileChartStack({
     if (!showDelta) {
       deltaChartRef.current = null;
       deltaSeriesRef.current = null;
+      cleanupDeltaTimeSyncRef.current?.();
+      cleanupDeltaTimeSyncRef.current = null;
     }
     applySync();
+    applyDeltaTimeSync();
   }, [showDelta]); // eslint-disable-line react-hooks/exhaustive-deps
 
   const handleMainChartReady = useCallback((chart: IChartApi, series: ISeriesApi<'Candlestick'>) => {
@@ -93,6 +118,7 @@ export function MobileChartStack({
     setMainChart(chart);
     setMainSeries(series);
     applySync();
+    applyDeltaTimeSync();
 
     chart.subscribeCrosshairMove((param) => {
       const volumeChart = volumeChartRef.current;
@@ -129,6 +155,7 @@ export function MobileChartStack({
     deltaChartRef.current = chart;
     deltaSeriesRef.current = series;
     applySync();
+    applyDeltaTimeSync();
   }, []); // eslint-disable-line react-hooks/exhaustive-deps
 
   return (
@@ -168,8 +195,8 @@ export function MobileChartStack({
       {showDelta && (
         <div className="h-28 shrink-0 border-t border-border">
           <DeltaChart
-            activeTimeframe={timeframe}
-            isRangeMode={false}
+            activeTimeframe="22R"
+            isRangeMode
             onToggleRangeMode={() => {}}
             onChartReady={handleDeltaChartReady}
             showRangeToggle={false}
