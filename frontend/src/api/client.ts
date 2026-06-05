@@ -4,7 +4,9 @@ import type { Trade } from '@/types/trade';
 import type { PriorDayStats } from '@/types/indicators';
 
 const BASE = import.meta.env.VITE_API_BASE_URL ?? '/api';
-const MARKET_DATA_BASE = import.meta.env.VITE_MARKET_DATA_BASE_URL;
+const MARKET_DATA_BASE =
+  import.meta.env.VITE_MARKET_DATA_BASE_URL
+  ?? (import.meta.env.PROD ? 'https://trading-data.moritzknodler.com/NQ' : undefined);
 
 async function get<T>(url: string): Promise<T> {
   const res = await fetch(url);
