@@ -1,5 +1,16 @@
 import { useEffect, useMemo, useState } from 'react';
-import { ChevronRight, Eye, EyeOff, RotateCcw, Send, X } from 'lucide-react';
+import {
+  BarChart3,
+  ChevronLeft,
+  ChevronRight,
+  ChevronsRight,
+  Eye,
+  EyeOff,
+  RotateCcw,
+  Send,
+  SlidersHorizontal,
+  X,
+} from 'lucide-react';
 import { MobileChartStack } from '@/components/Mobile/MobileChartStack';
 import { useReplayStore } from '@/stores/replayStore';
 import { useTradeStore } from '@/stores/tradeStore';
@@ -13,6 +24,8 @@ const ACCOUNT_START = 50_000;
 const TRAILING_DRAWDOWN = 2_500;
 const TRAIL_STOP_EQUITY = 50_100;
 const DOLLARS_PER_POINT = 20;
+const IB_REVEAL_INDEX = 59;
+const BIG_STEP = 5;
 
 function fmt(n: number, digits = 2) {
   return Number.isFinite(n) ? n.toFixed(digits) : '--';
@@ -47,6 +60,7 @@ export function MobileApp() {
     loadSession,
     loadSessions,
     sessionDate,
+    stepBack,
     stepForward,
     setIndex,
   } = useReplayStore();
@@ -57,7 +71,12 @@ export function MobileApp() {
   const [showDelta, setShowDelta] = useState(true);
   const [showVolumeProfile, setShowVolumeProfile] = useState(false);
   const [showIndicators, setShowIndicators] = useState(false);
-  const [indicators, setIndicators] = useState<IndicatorConfig>(DEFAULT_INDICATORS);
+  const [showSetup, setShowSetup] = useState(false);
+  const [showStats, setShowStats] = useState(false);
+  const [indicators, setIndicators] = useState<IndicatorConfig>({
+    ...DEFAULT_INDICATORS,
+    showIBHL: true,
+  });
   const [equityHigh, setEquityHigh] = useState(ACCOUNT_START);
 
   const currentCandle = candles[currentIndex];
@@ -81,6 +100,11 @@ export function MobileApp() {
   useEffect(() => {
     setEquityHigh((high) => Math.max(high, equity));
   }, [equity]);
+
+  useEffect(() => {
+    if (!indicators.showIBHL || candles.length === 0 || currentIndex !== 0) return;
+    setIndex(Math.min(IB_REVEAL_INDEX, candles.length - 1));
+  }, [candles, currentIndex, indicators.showIBHL, setIndex]);
 
   useEffect(() => {
     if (!openTrade || candles.length === 0) return;
@@ -123,7 +147,7 @@ export function MobileApp() {
   }, 0);
 
   function resetReplay() {
-    setIndex(0);
+    setIndex(indicators.showIBHL && candles.length > 0 ? Math.min(IB_REVEAL_INDEX, candles.length - 1) : 0);
     cancelTrade();
     clearLog();
     setEquityHigh(ACCOUNT_START);
@@ -147,6 +171,23 @@ export function MobileApp() {
     setIndicators((current) => ({ ...current, [key]: !current[key] }));
   }
 
+  async function loadMobileSession(date: string) {
+    await loadSession(date);
+    cancelTrade();
+    clearLog();
+    setEquityHigh(ACCOUNT_START);
+    if (indicators.showIBHL) {
+      requestAnimationFrame(() => {
+        const { candles: loadedCandles } = useReplayStore.getState();
+        setIndex(Math.min(IB_REVEAL_INDEX, loadedCandles.length - 1));
+      });
+    }
+  }
+
+  function stepBigForward() {
+    setIndex(Math.min(currentIndex + BIG_STEP, candles.length - 1));
+  }
+
   return (
     <div className="flex h-dvh w-screen flex-col overflow-hidden bg-surface text-gray-200 select-none">
       <header className="shrink-0 border-b border-border bg-panel px-3 py-2">
@@ -154,7 +195,7 @@ export function MobileApp() {
           <span className="text-xs font-bold tracking-wider text-blue-400">NQ TRAINER</span>
           <select
             value={sessionDate}
-            onChange={(event) => loadSession(event.target.value)}
+            onChange={(event) => loadMobileSession(event.target.value)}
             className="min-w-0 flex-1 rounded border border-border bg-surface px-2 py-1 text-xs text-gray-200"
           >
             {availableDates.map((date) => (
@@ -216,6 +257,17 @@ export function MobileApp() {
           >
             {showIndicators ? <EyeOff size={14} /> : <Eye size={14} />}
           </button>
+          <button
+            type="button"
+            onClick={() => setShowSetup((value) => !value)}
+            className={cn(
+              'grid h-7 w-8 shrink-0 place-items-center rounded border text-gray-400',
+              showSetup || indicators.showIBHL ? 'border-blue-500 text-blue-300' : 'border-border',
+            )}
+            aria-label="Setup menu"
+          >
+            <SlidersHorizontal size={14} />
+          </button>
         </div>
 
         {showIndicators && (
@@ -235,6 +287,30 @@ export function MobileApp() {
             ))}
           </div>
         )}
+
+        {showSetup && (
+          <div className="mt-2 flex gap-1 overflow-x-auto">
+            <button
+              type="button"
+              onClick={() => {
+                toggleIndicator('showIBHL');
+                requestAnimationFrame(() => {
+                  const { candles: loadedCandles } = useReplayStore.getState();
+                  const willShow = !indicators.showIBHL;
+                  if (willShow && loadedCandles.length > 0) {
+                    setIndex(Math.min(IB_REVEAL_INDEX, loadedCandles.length - 1));
+                  }
+                });
+              }}
+              className={cn(
+                'h-7 shrink-0 rounded border px-2 text-[11px]',
+                indicators.showIBHL ? 'border-blue-500 text-blue-300' : 'border-border text-gray-500',
+              )}
+            >
+              IBH/IBL
+            </button>
+          </div>
+        )}
       </header>
 
       <main className="min-h-0 flex-1">
@@ -251,51 +327,75 @@ export function MobileApp() {
         {error && <div className="mb-2 rounded border border-red-500/30 bg-red-500/10 px-2 py-1 text-xs text-red-300">{error}</div>}
         {isLoading && <div className="mb-2 text-xs text-gray-500">Loading session...</div>}
 
-        <div className="grid grid-cols-4 gap-2 text-center">
-          <div>
-            <div className="text-[10px] uppercase tracking-wider text-gray-600">Score</div>
-            <div className="text-sm font-semibold tabular-nums text-gray-100">{score}</div>
-          </div>
-          <div>
-            <div className="text-[10px] uppercase tracking-wider text-gray-600">Streak</div>
-            <div className="text-sm font-semibold tabular-nums text-gray-100">{streak}</div>
-          </div>
-          <div>
-            <div className="text-[10px] uppercase tracking-wider text-gray-600">Last R</div>
-            <div className={cn('text-sm font-semibold tabular-nums', lastR >= 0 ? 'text-green-400' : 'text-red-400')}>
-              {fmt(lastR, 2)}
+        {showStats && (
+          <div className="mb-2 grid grid-cols-4 gap-2 text-center">
+            <div>
+              <div className="text-[10px] uppercase tracking-wider text-gray-600">Score</div>
+              <div className="text-sm font-semibold tabular-nums text-gray-100">{score}</div>
+            </div>
+            <div>
+              <div className="text-[10px] uppercase tracking-wider text-gray-600">Streak</div>
+              <div className="text-sm font-semibold tabular-nums text-gray-100">{streak}</div>
+            </div>
+            <div>
+              <div className="text-[10px] uppercase tracking-wider text-gray-600">Last R</div>
+              <div className={cn('text-sm font-semibold tabular-nums', lastR >= 0 ? 'text-green-400' : 'text-red-400')}>
+                {fmt(lastR, 2)}
+              </div>
+            </div>
+            <div>
+              <div className="text-[10px] uppercase tracking-wider text-gray-600">DD Room</div>
+              <div className={cn('text-sm font-semibold tabular-nums', drawdownRoom >= 0 ? 'text-gray-100' : 'text-red-400')}>
+                ${Math.round(drawdownRoom)}
+              </div>
             </div>
           </div>
-          <div>
-            <div className="text-[10px] uppercase tracking-wider text-gray-600">DD Room</div>
-            <div className={cn('text-sm font-semibold tabular-nums', drawdownRoom >= 0 ? 'text-gray-100' : 'text-red-400')}>
-              ${Math.round(drawdownRoom)}
-            </div>
-          </div>
-        </div>
+        )}
 
-        <div className="mt-2 flex items-center gap-2">
+        <div className="flex items-center gap-2">
           {!openTrade && (
             <>
               <button
                 type="button"
-                onClick={() => startTrade('long')}
-                className="h-10 flex-1 rounded border border-green-500/60 bg-green-500/10 text-sm font-semibold text-green-300"
+                onClick={() => setShowStats((value) => !value)}
+                className={cn(
+                  'grid h-10 w-10 shrink-0 place-items-center rounded border',
+                  showStats ? 'border-blue-500 text-blue-300' : 'border-border text-gray-400',
+                )}
+                aria-label="Toggle stats"
               >
-                Long Limit
+                <BarChart3 size={16} />
+              </button>
+              <button
+                type="button"
+                onClick={() => startTrade('long')}
+                className="h-10 w-12 rounded border border-green-500/60 bg-green-500/10 text-sm font-semibold text-green-300"
+              >
+                L
               </button>
               <button
                 type="button"
                 onClick={() => startTrade('short')}
-                className="h-10 flex-1 rounded border border-red-500/60 bg-red-500/10 text-sm font-semibold text-red-300"
+                className="h-10 w-12 rounded border border-red-500/60 bg-red-500/10 text-sm font-semibold text-red-300"
               >
-                Short Limit
+                S
               </button>
             </>
           )}
 
           {openTrade && (
             <>
+              <button
+                type="button"
+                onClick={() => setShowStats((value) => !value)}
+                className={cn(
+                  'grid h-10 w-10 shrink-0 place-items-center rounded border',
+                  showStats ? 'border-blue-500 text-blue-300' : 'border-border text-gray-400',
+                )}
+                aria-label="Toggle stats"
+              >
+                <BarChart3 size={16} />
+              </button>
               <div className="min-w-0 flex-1 text-xs text-gray-400">
                 <div className="truncate">
                   {openTrade.direction.toUpperCase()} · {openTrade.status ?? 'active'} · E {fmt(openTrade.entry_price)}
@@ -329,12 +429,30 @@ export function MobileApp() {
 
           <button
             type="button"
+            onClick={stepBack}
+            disabled={currentIndex <= 0}
+            className="grid h-10 w-10 shrink-0 place-items-center rounded border border-border text-gray-300 disabled:opacity-40"
+            aria-label="Go back one candle"
+          >
+            <ChevronLeft size={18} />
+          </button>
+          <button
+            type="button"
             onClick={stepForward}
             disabled={currentIndex >= candles.length - 1}
-            className="flex h-10 w-24 items-center justify-center gap-1 rounded border border-blue-500/70 bg-blue-600 text-sm font-semibold text-white disabled:opacity-40"
+            className="grid h-10 w-12 shrink-0 place-items-center rounded border border-blue-500/70 bg-blue-600 text-white disabled:opacity-40"
+            aria-label="Next candle"
           >
-            Next
             <ChevronRight size={17} />
+          </button>
+          <button
+            type="button"
+            onClick={stepBigForward}
+            disabled={currentIndex >= candles.length - 1}
+            className="grid h-10 w-12 shrink-0 place-items-center rounded border border-blue-500/70 bg-blue-600 text-white disabled:opacity-40"
+            aria-label="Jump forward"
+          >
+            <ChevronsRight size={18} />
           </button>
         </div>
       </section>

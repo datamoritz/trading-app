@@ -161,7 +161,8 @@ function DesktopApp() {
 }
 
 export default function App() {
-  if (window.location.pathname.startsWith('/mobile')) {
+  const path = window.location.pathname;
+  if (path.startsWith('/mobile') || (import.meta.env.PROD && !path.startsWith('/desktop'))) {
     return <MobileApp />;
   }
 
