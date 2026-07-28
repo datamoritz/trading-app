@@ -11,23 +11,34 @@ import { useTimezoneStore, TZ_ORDER } from '@/stores/timezoneStore';
 import { cn } from '@/lib/utils';
 import { findTradeExit } from '@/utils/tradeExecution';
 import { MobileApp } from '@/components/Mobile/MobileApp';
+import { LaunchModeChooser } from '@/components/Simulation/LaunchModeChooser';
+import { SimulationControls } from '@/components/Simulation/SimulationControls';
+import { SimulationOverlay } from '@/components/Simulation/SimulationOverlay';
+import { useSimulationStore } from '@/stores/simulationStore';
+import { useSimulationPlayback } from '@/hooks/useSimulationPlayback';
 
-function useReplayInterval() {
+function useReplayInterval(active: boolean) {
   const { isPlaying, speed, stepForward } = useReplayStore();
   const stepRef = useRef(stepForward);
   stepRef.current = stepForward;
 
   useEffect(() => {
-    if (!isPlaying) return;
+    if (!active || !isPlaying) return;
     const id = setInterval(() => stepRef.current(), 1000 / speed);
     return () => clearInterval(id);
-  }, [isPlaying, speed]);
+  }, [active, isPlaying, speed]);
 }
 
-function useHotkeys() {
+function useHotkeys(simulationMode: boolean) {
   const { togglePlay, stepForward, stepBack } = useReplayStore();
   const { openTrade } = useTradeStore();
-  const { candles, currentIndex } = useReplayStore();
+  const {
+    candles,
+    currentIndex,
+    isTickSimulation,
+    latestPrice,
+    latestTickTime,
+  } = useReplayStore();
 
   useEffect(() => {
     function onKey(e: KeyboardEvent) {
@@ -37,25 +48,27 @@ function useHotkeys() {
       switch (e.key) {
         case ' ':
           e.preventDefault();
-          togglePlay();
+          if (simulationMode) useSimulationStore.getState().togglePlay();
+          else togglePlay();
           break;
         case 'ArrowRight':
           e.preventDefault();
-          stepForward();
+          if (!simulationMode) stepForward();
           break;
         case 'ArrowLeft':
           e.preventDefault();
-          stepBack();
+          if (!simulationMode) stepBack();
           break;
         case 'l':
         case 'L': {
           const candle = candles[currentIndex];
           if (!candle || openTrade) break;
-          const price = candle.close;
+          const price = isTickSimulation ? latestPrice : candle.close;
+          const time = isTickSimulation ? latestTickTime : candle.time;
           useTradeStore.getState().enterTrade({
             trade_id: crypto.randomUUID(),
             direction: 'long',
-            entry_time: candle.time,
+            entry_time: time,
             entry_price: price,
             stop_price: price - 10,
             target_price: price + 20,
@@ -66,11 +79,12 @@ function useHotkeys() {
         case 'S': {
           const candle = candles[currentIndex];
           if (!candle || openTrade) break;
-          const price = candle.close;
+          const price = isTickSimulation ? latestPrice : candle.close;
+          const time = isTickSimulation ? latestTickTime : candle.time;
           useTradeStore.getState().enterTrade({
             trade_id: crypto.randomUUID(),
             direction: 'short',
-            entry_time: candle.time,
+            entry_time: time,
             entry_price: price,
             stop_price: price + 10,
             target_price: price - 20,
@@ -81,7 +95,10 @@ function useHotkeys() {
         case 'F': {
           const candle = candles[currentIndex];
           if (!candle || !openTrade) break;
-          useTradeStore.getState().flatten(candle.time, candle.close);
+          useTradeStore.getState().flatten(
+            isTickSimulation ? latestTickTime : candle.time,
+            isTickSimulation ? latestPrice : candle.close,
+          );
           break;
         }
       }
@@ -89,30 +106,41 @@ function useHotkeys() {
 
     document.addEventListener('keydown', onKey);
     return () => document.removeEventListener('keydown', onKey);
-  }, [togglePlay, stepForward, stepBack, candles, currentIndex, openTrade]);
+  }, [
+    simulationMode,
+    togglePlay,
+    stepForward,
+    stepBack,
+    candles,
+    currentIndex,
+    isTickSimulation,
+    latestPrice,
+    latestTickTime,
+    openTrade,
+  ]);
 }
 
-function useTradeAutoExit() {
+function useTradeAutoExit(active: boolean) {
   const { candles, currentIndex } = useReplayStore();
   const { openTrade } = useTradeStore();
 
   useEffect(() => {
-    if (!openTrade || candles.length === 0) return;
+    if (!active || !openTrade || candles.length === 0) return;
     if (openTrade.status === 'draft' || openTrade.status === 'pending') return;
     const exit = findTradeExit(openTrade, candles, currentIndex);
     if (!exit) return;
     useTradeStore.getState().closeTrade(exit.time, exit.price);
-  }, [candles, currentIndex, openTrade]);
+  }, [active, candles, currentIndex, openTrade]);
 }
 
-function DesktopApp() {
-  useReplayInterval();
-  useHotkeys();
-  useTradeAutoExit();
+function DesktopApp({ simulationMode, onExit }: { simulationMode: boolean; onExit: () => void }) {
+  useReplayInterval(!simulationMode);
+  useHotkeys(simulationMode);
+  useTradeAutoExit(!simulationMode);
 
   useEffect(() => {
-    useReplayStore.getState().loadSessions();
-  }, []);
+    if (!simulationMode) useReplayStore.getState().loadSessions();
+  }, [simulationMode]);
 
   const { tz, setTz } = useTimezoneStore();
   const [footerExpanded, setFooterExpanded] = useState(true);
@@ -122,9 +150,22 @@ function DesktopApp() {
       {/* Top bar */}
       <header className="h-12 flex items-center gap-4 px-4 border-b border-border bg-panel shrink-0">
         <span className="text-xs font-bold text-blue-400 tracking-wider mr-2">NQ TRAINER</span>
-        <SessionSelector />
+        {simulationMode ? (
+          <span className="rounded border border-blue-500/50 px-2 py-1 text-[11px] font-semibold uppercase tracking-wider text-blue-300">
+            Blind setup
+          </span>
+        ) : (
+          <SessionSelector />
+        )}
         <div className="w-px h-5 bg-border" />
-        <ReplayControls />
+        {simulationMode ? <SimulationControls /> : <ReplayControls />}
+        <button
+          type="button"
+          onClick={onExit}
+          className="rounded border border-border px-2 py-1 text-[11px] text-gray-500 hover:text-gray-200"
+        >
+          Modes
+        </button>
         <button
           onClick={() => setTz(TZ_ORDER[(TZ_ORDER.indexOf(tz) + 1) % TZ_ORDER.length])}
           className="px-2 py-0.5 rounded text-xs border border-border text-gray-500 hover:text-gray-300 tabular-nums"
@@ -135,8 +176,9 @@ function DesktopApp() {
       </header>
 
       {/* Chart area */}
-      <main className="flex-1 overflow-hidden min-h-0">
+      <main className="relative flex-1 overflow-hidden min-h-0">
         <ChartGrid />
+        {simulationMode && <SimulationOverlay />}
       </main>
 
       {/* Bottom panel — ribbon always visible; full panel slides in above it */}
@@ -161,10 +203,37 @@ function DesktopApp() {
 }
 
 export default function App() {
+  const [mode, setMode] = useState<'standard' | 'simulation' | null>(null);
   const path = window.location.pathname;
-  if (path.startsWith('/mobile') || (import.meta.env.PROD && !path.startsWith('/desktop'))) {
-    return <MobileApp />;
+  const isMobile = path.startsWith('/mobile') || (import.meta.env.PROD && !path.startsWith('/desktop'));
+  useSimulationPlayback(mode === 'simulation');
+
+  useEffect(() => {
+    if (mode === 'simulation') void useSimulationStore.getState().start();
+  }, [mode]);
+
+  function exitToModes() {
+    useSimulationStore.getState().reset();
+    setMode(null);
   }
 
-  return <DesktopApp />;
+  function chooseMode(nextMode: 'standard' | 'simulation') {
+    if (nextMode === 'simulation') {
+      useReplayStore.setState({ isTickSimulation: true });
+    }
+    setMode(nextMode);
+  }
+
+  if (!mode) return <LaunchModeChooser onChoose={chooseMode} />;
+
+  if (isMobile) {
+    return (
+      <MobileApp
+        simulationMode={mode === 'simulation'}
+        onExit={exitToModes}
+      />
+    );
+  }
+
+  return <DesktopApp simulationMode={mode === 'simulation'} onExit={exitToModes} />;
 }

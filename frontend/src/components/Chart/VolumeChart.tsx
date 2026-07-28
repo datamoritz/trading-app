@@ -76,7 +76,7 @@ export function VolumeChart({ activeTimeframe, showIBEnd, onChartReady }: Props)
   const onChartReadyRef = useRef(onChartReady);
   onChartReadyRef.current = onChartReady;
 
-  const { candles, currentIndex } = useReplayStore();
+  const { candles, currentIndex, isTickSimulation, rangeBars } = useReplayStore();
   const { tz } = useTimezoneStore();
 
   const prevCandlesRef   = useRef<typeof candles | null>(null);
@@ -161,10 +161,10 @@ export function VolumeChart({ activeTimeframe, showIBEnd, onChartReady }: Props)
 
     const slice    = candles.slice(0, currentIndex + 1);
     const fullBars = activeTimeframe === '22R'
-      ? computeRangeBars(candles)
+      ? (isTickSimulation ? rangeBars : computeRangeBars(candles))
       : aggregateCandles(candles, activeTimeframe);
     const bars  = activeTimeframe === '22R'
-      ? computeRangeBars(slice)
+      ? (isTickSimulation ? rangeBars : computeRangeBars(slice))
       : aggregateCandles(slice, activeTimeframe);
 
     const { volBars: actualVolBars, maBars: actualMaBars } = buildChartData(bars);
@@ -197,7 +197,7 @@ export function VolumeChart({ activeTimeframe, showIBEnd, onChartReady }: Props)
     }
     prevBarCountRef.current = actualVolBars.length;
     prevIndexRef.current = currentIndex;
-  }, [currentIndex, candles, activeTimeframe]);
+  }, [currentIndex, candles, activeTimeframe, isTickSimulation, rangeBars]);
 
   // ── IB end vertical line ───────────────────────────────────────────────────
   useEffect(() => {

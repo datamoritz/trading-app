@@ -137,7 +137,14 @@ export function MainChart({
   const measureStartRef = useRef<MeasurePoint | null>(null);
   const measurementRef = useRef<MeasurementPrimitive | null>(null);
 
-  const { candles, signals, currentIndex, priorDayStats } = useReplayStore();
+  const {
+    candles,
+    signals,
+    currentIndex,
+    priorDayStats,
+    isTickSimulation,
+    rangeBars,
+  } = useReplayStore();
   const { openTrade } = useTradeStore();
   const { tz } = useTimezoneStore();
 
@@ -289,10 +296,10 @@ export function MainChart({
 
     const slice      = candles.slice(0, currentIndex + 1);
     const fullBars   = activeTimeframe === '22R'
-      ? computeRangeBars(candles)
+      ? (isTickSimulation ? rangeBars : computeRangeBars(candles))
       : aggregateCandles(candles, activeTimeframe);
     const visible = activeTimeframe === '22R'
-      ? computeRangeBars(slice)
+      ? (isTickSimulation ? rangeBars : computeRangeBars(slice))
       : aggregateCandles(slice, activeTimeframe);
     const mappedActual = visible.map(
       (c) => ({ time: c.time as Time, open: c.open, high: c.high, low: c.low, close: c.close }),
@@ -323,7 +330,7 @@ export function MainChart({
     }
     prevBarCountRef.current = mappedActual.length;
     prevIndexRef.current = currentIndex;
-  }, [currentIndex, candles, activeTimeframe]);
+  }, [currentIndex, candles, activeTimeframe, isTickSimulation, rangeBars]);
 
   // Clear measurement on session/timeframe changes.
   useEffect(() => {

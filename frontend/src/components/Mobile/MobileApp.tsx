@@ -18,8 +18,11 @@ import { DEFAULT_INDICATORS, type IndicatorConfig } from '@/types/indicators';
 import type { Timeframe } from '@/types/market';
 import { findTradeExit } from '@/utils/tradeExecution';
 import { cn } from '@/lib/utils';
+import { SimulationControls } from '@/components/Simulation/SimulationControls';
+import { SimulationOverlay } from '@/components/Simulation/SimulationOverlay';
+import { useSimulationStore } from '@/stores/simulationStore';
 
-const MOBILE_TIMEFRAMES: Timeframe[] = ['1m', '5m', '1h'];
+const MOBILE_TIMEFRAMES: Timeframe[] = ['1m', '5m', '1h', '22R'];
 const ACCOUNT_START = 50_000;
 const TRAILING_DRAWDOWN = 2_500;
 const TRAIL_STOP_EQUITY = 50_100;
@@ -50,7 +53,12 @@ function indicatorLabel(key: keyof IndicatorConfig) {
   return labels[key];
 }
 
-export function MobileApp() {
+interface Props {
+  simulationMode?: boolean;
+  onExit?: () => void;
+}
+
+export function MobileApp({ simulationMode = false, onExit }: Props) {
   const {
     availableDates,
     candles,
@@ -64,7 +72,20 @@ export function MobileApp() {
     stepForward,
     setIndex,
   } = useReplayStore();
-  const { openTrade, tradeLog, enterTrade, submitTrade, fillTrade, closeTrade, cancelTrade, clearLog } = useTradeStore();
+  const {
+    openTrade,
+    tradeLog,
+    enterTrade,
+    submitTrade,
+    fillTrade,
+    closeTrade,
+    flatten,
+    cancelTrade,
+    clearLog,
+  } = useTradeStore();
+  const simulationPhase = useSimulationStore((state) => state.phase);
+  const latestTickTime = useReplayStore((state) => state.latestTickTime);
+  const latestPrice = useReplayStore((state) => state.latestPrice);
 
   const [timeframe, setTimeframe] = useState<Timeframe>('5m');
   const [showVolume, setShowVolume] = useState(true);
@@ -94,20 +115,20 @@ export function MobileApp() {
   const equity = ACCOUNT_START + realizedDollars + unrealizedDollars;
 
   useEffect(() => {
-    loadSessions();
-  }, [loadSessions]);
+    if (!simulationMode) loadSessions();
+  }, [loadSessions, simulationMode]);
 
   useEffect(() => {
     setEquityHigh((high) => Math.max(high, equity));
   }, [equity]);
 
   useEffect(() => {
-    if (!indicators.showIBHL || candles.length === 0 || currentIndex !== 0) return;
+    if (simulationMode || !indicators.showIBHL || candles.length === 0 || currentIndex !== 0) return;
     setIndex(Math.min(IB_REVEAL_INDEX, candles.length - 1));
-  }, [candles, currentIndex, indicators.showIBHL, setIndex]);
+  }, [candles, currentIndex, indicators.showIBHL, setIndex, simulationMode]);
 
   useEffect(() => {
-    if (!openTrade || candles.length === 0) return;
+    if (simulationMode || !openTrade || candles.length === 0) return;
 
     if (openTrade.status === 'pending') {
       const submittedIndex = candles.findIndex((candle) => candle.time === openTrade.submitted_time);
@@ -126,7 +147,7 @@ export function MobileApp() {
 
     const exit = findTradeExit(openTrade, candles, currentIndex);
     if (exit) closeTrade(exit.time, exit.price);
-  }, [candles, closeTrade, currentIndex, fillTrade, openTrade]);
+  }, [candles, closeTrade, currentIndex, fillTrade, openTrade, simulationMode]);
 
   const trailBase = Math.min(Math.max(equityHigh, ACCOUNT_START), TRAIL_STOP_EQUITY);
   const drawdownThreshold = trailBase - TRAILING_DRAWDOWN;
@@ -147,6 +168,10 @@ export function MobileApp() {
   }, 0);
 
   function resetReplay() {
+    if (simulationMode) {
+      void useSimulationStore.getState().next();
+      return;
+    }
     setIndex(indicators.showIBHL && candles.length > 0 ? Math.min(IB_REVEAL_INDEX, candles.length - 1) : 0);
     cancelTrade();
     clearLog();
@@ -193,22 +218,28 @@ export function MobileApp() {
       <header className="shrink-0 border-b border-border bg-panel px-3 py-2">
         <div className="flex items-center gap-2">
           <span className="text-xs font-bold tracking-wider text-blue-400">NQ TRAINER</span>
-          <select
-            value={sessionDate}
-            onChange={(event) => loadMobileSession(event.target.value)}
-            className="min-w-0 flex-1 rounded border border-border bg-surface px-2 py-1 text-xs text-gray-200"
-          >
-            {availableDates.map((date) => (
-              <option key={date} value={date}>{date}</option>
-            ))}
-          </select>
+          {simulationMode ? (
+            <div className="min-w-0 flex-1 truncate rounded border border-blue-500/40 bg-blue-500/10 px-2 py-1 text-xs font-semibold uppercase tracking-wider text-blue-300">
+              Blind setup · exact ticks
+            </div>
+          ) : (
+            <select
+              value={sessionDate}
+              onChange={(event) => loadMobileSession(event.target.value)}
+              className="min-w-0 flex-1 rounded border border-border bg-surface px-2 py-1 text-xs text-gray-200"
+            >
+              {availableDates.map((date) => (
+                <option key={date} value={date}>{date}</option>
+              ))}
+            </select>
+          )}
           <button
             type="button"
-            onClick={resetReplay}
+            onClick={simulationMode ? onExit : resetReplay}
             className="grid h-8 w-8 place-items-center rounded border border-border text-gray-400"
-            aria-label="Reset replay"
+            aria-label={simulationMode ? 'Choose mode' : 'Reset replay'}
           >
-            <RotateCcw size={15} />
+            {simulationMode ? <X size={15} /> : <RotateCcw size={15} />}
           </button>
         </div>
 
@@ -313,7 +344,7 @@ export function MobileApp() {
         )}
       </header>
 
-      <main className="min-h-0 flex-1">
+      <main className="relative min-h-0 flex-1">
         <MobileChartStack
           timeframe={timeframe}
           indicators={indicators}
@@ -321,11 +352,19 @@ export function MobileApp() {
           showDelta={showDelta}
           showVolumeProfile={showVolumeProfile}
         />
+        {simulationMode && <SimulationOverlay />}
       </main>
 
       <section className="shrink-0 border-t border-border bg-panel px-3 py-2">
+        {simulationMode && (
+          <div className="mb-2 border-b border-border pb-2">
+            <SimulationControls compact />
+          </div>
+        )}
         {error && <div className="mb-2 rounded border border-red-500/30 bg-red-500/10 px-2 py-1 text-xs text-red-300">{error}</div>}
-        {isLoading && <div className="mb-2 text-xs text-gray-500">Loading session...</div>}
+        {(isLoading || (simulationMode && simulationPhase === 'loading')) && (
+          <div className="mb-2 text-xs text-gray-500">Loading session...</div>
+        )}
 
         {showStats && (
           <div className="mb-2 grid grid-cols-4 gap-2 text-center">
@@ -424,36 +463,53 @@ export function MobileApp() {
                   <X size={17} />
                 </button>
               )}
+              {openTrade.status === 'active' && (
+                <button
+                  type="button"
+                  onClick={() => {
+                    const time = simulationMode ? latestTickTime : currentCandle?.time;
+                    const price = simulationMode ? latestPrice : currentCandle?.close;
+                    if (time && price) flatten(time, price);
+                  }}
+                  className="h-10 rounded border border-gray-500 px-3 text-xs font-semibold text-gray-200"
+                >
+                  FLAT
+                </button>
+              )}
             </>
           )}
 
-          <button
-            type="button"
-            onClick={stepBack}
-            disabled={currentIndex <= 0}
-            className="grid h-10 w-10 shrink-0 place-items-center rounded border border-border text-gray-300 disabled:opacity-40"
-            aria-label="Go back one candle"
-          >
-            <ChevronLeft size={18} />
-          </button>
-          <button
-            type="button"
-            onClick={stepForward}
-            disabled={currentIndex >= candles.length - 1}
-            className="grid h-10 w-12 shrink-0 place-items-center rounded border border-blue-500/70 bg-blue-600 text-white disabled:opacity-40"
-            aria-label="Next candle"
-          >
-            <ChevronRight size={17} />
-          </button>
-          <button
-            type="button"
-            onClick={stepBigForward}
-            disabled={currentIndex >= candles.length - 1}
-            className="grid h-10 w-12 shrink-0 place-items-center rounded border border-blue-500/70 bg-blue-600 text-white disabled:opacity-40"
-            aria-label="Jump forward"
-          >
-            <ChevronsRight size={18} />
-          </button>
+          {!simulationMode && (
+            <>
+              <button
+                type="button"
+                onClick={stepBack}
+                disabled={currentIndex <= 0}
+                className="grid h-10 w-10 shrink-0 place-items-center rounded border border-border text-gray-300 disabled:opacity-40"
+                aria-label="Go back one candle"
+              >
+                <ChevronLeft size={18} />
+              </button>
+              <button
+                type="button"
+                onClick={stepForward}
+                disabled={currentIndex >= candles.length - 1}
+                className="grid h-10 w-12 shrink-0 place-items-center rounded border border-blue-500/70 bg-blue-600 text-white disabled:opacity-40"
+                aria-label="Next candle"
+              >
+                <ChevronRight size={17} />
+              </button>
+              <button
+                type="button"
+                onClick={stepBigForward}
+                disabled={currentIndex >= candles.length - 1}
+                className="grid h-10 w-12 shrink-0 place-items-center rounded border border-blue-500/70 bg-blue-600 text-white disabled:opacity-40"
+                aria-label="Jump forward"
+              >
+                <ChevronsRight size={18} />
+              </button>
+            </>
+          )}
         </div>
       </section>
     </div>

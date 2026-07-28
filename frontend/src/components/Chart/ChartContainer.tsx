@@ -11,9 +11,9 @@ import { DEFAULT_INDICATORS } from '@/types/indicators';
 import { cn } from '@/lib/utils';
 import { useReplayStore } from '@/stores/replayStore';
 
-type MainTimeframe = Exclude<Timeframe, '22R'>;
+type MainTimeframe = Timeframe;
 
-const TIMEFRAMES: MainTimeframe[] = ['1m', '5m', '1h'];
+const TIMEFRAMES: MainTimeframe[] = ['1m', '5m', '1h', '22R'];
 
 const DELTA_H_MIN  = 60;
 const DELTA_H_MAX  = 500;
@@ -30,7 +30,10 @@ interface Props {
 
 export function ChartContainer({ onRemove, onAddChart }: Props) {
   // Per-chart state (previously in chartStore, now local)
-  const [activeTimeframe, setTimeframe] = useState<MainTimeframe>('1m');
+  const isTickSimulation = useReplayStore((state) => state.isTickSimulation);
+  const [activeTimeframe, setTimeframe] = useState<MainTimeframe>(
+    isTickSimulation ? '5m' : '1m',
+  );
   const [showVolumeProfile, setShowVolumeProfile] = useState(true);
   const [showDelta, setShowDelta] = useState(true);
   const [showVolume, setShowVolume] = useState(false);
@@ -40,7 +43,7 @@ export function ChartContainer({ onRemove, onAddChart }: Props) {
   const [deltaHeight, setDeltaHeight]   = useState(150);
   const [volumeHeight, setVolumeHeight] = useState(100);
   const [vpWidth, setVpWidth]           = useState(120);
-  const { currentIndex } = useReplayStore();
+  const currentIndex = useReplayStore((state) => state.currentIndex);
 
   // Sync refs
   const mainChartRef    = useRef<IChartApi | null>(null);

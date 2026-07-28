@@ -7,19 +7,26 @@ const DEFAULT_TARGET_PTS = 20;
 const STEP = 5;
 
 export function TradePanel() {
-  const { candles, currentIndex } = useReplayStore();
+  const {
+    candles,
+    currentIndex,
+    isTickSimulation,
+    latestPrice,
+    latestTickTime,
+  } = useReplayStore();
   const { openTrade, enterTrade, flatten, cancelTrade, updateStopPrice, updateTargetPrice } = useTradeStore();
 
 
   const currentCandle = candles[currentIndex];
-  const price = currentCandle?.close ?? 0;
+  const price = isTickSimulation ? latestPrice : currentCandle?.close ?? 0;
+  const entryTime = isTickSimulation ? latestTickTime : currentCandle?.time ?? 0;
 
   function handleLong() {
     if (!currentCandle || openTrade) return;
     enterTrade({
       trade_id: crypto.randomUUID(),
       direction: 'long',
-      entry_time: currentCandle.time,
+      entry_time: entryTime,
       entry_price: price,
       stop_price:   price - DEFAULT_STOP_PTS,
       target_price: price + DEFAULT_TARGET_PTS,
@@ -31,7 +38,7 @@ export function TradePanel() {
     enterTrade({
       trade_id: crypto.randomUUID(),
       direction: 'short',
-      entry_time: currentCandle.time,
+      entry_time: entryTime,
       entry_price: price,
       stop_price:   price + DEFAULT_STOP_PTS,
       target_price: price - DEFAULT_TARGET_PTS,
@@ -40,7 +47,7 @@ export function TradePanel() {
 
   function handleFlatten() {
     if (!currentCandle || !openTrade) return;
-    flatten(currentCandle.time, price);
+    flatten(entryTime, price);
   }
 
   function handleCancel() {

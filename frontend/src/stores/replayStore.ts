@@ -2,6 +2,7 @@ import { create } from 'zustand';
 import type { Candle } from '@/types/market';
 import type { Signal } from '@/types/signal';
 import type { PriorDayStats } from '@/types/indicators';
+import type { SimulationFrame } from '@/types/simulation';
 import { fetchSessions, fetchBars, fetchPriorDayStats } from '@/api/client';
 import { generateMockSignals } from '@/utils/mockData';
 
@@ -18,9 +19,18 @@ interface ReplayState {
   speed: ReplaySpeed;
   isLoading: boolean;
   error: string | null;
+  isTickSimulation: boolean;
+  rangeBars: Candle[];
+  cvdBars: Candle[];
+  rangeCvdBars: Candle[];
+  latestTickTime: number;
+  latestPrice: number;
 
   loadSessions: () => Promise<void>;
   loadSession: (date: string) => Promise<void>;
+  loadSimulationFrame: (frame: SimulationFrame) => void;
+  updateSimulationFrame: (frame: SimulationFrame) => void;
+  leaveSimulation: () => void;
   play: () => void;
   pause: () => void;
   togglePlay: () => void;
@@ -41,6 +51,12 @@ export const useReplayStore = create<ReplayState>((set, get) => ({
   speed: 1,
   isLoading: false,
   error: null,
+  isTickSimulation: false,
+  rangeBars: [],
+  cvdBars: [],
+  rangeCvdBars: [],
+  latestTickTime: 0,
+  latestPrice: 0,
 
   async loadSessions() {
     set({ isLoading: true, error: null });
@@ -57,7 +73,17 @@ export const useReplayStore = create<ReplayState>((set, get) => ({
   },
 
   async loadSession(date: string) {
-    set({ isLoading: true, isPlaying: false, error: null });
+    set({
+      isLoading: true,
+      isPlaying: false,
+      error: null,
+      isTickSimulation: false,
+      rangeBars: [],
+      cvdBars: [],
+      rangeCvdBars: [],
+      latestTickTime: 0,
+      latestPrice: 0,
+    });
     try {
       const [candles, priorDayStats] = await Promise.all([
         fetchBars(date),
@@ -68,6 +94,53 @@ export const useReplayStore = create<ReplayState>((set, get) => ({
     } catch (e) {
       set({ isLoading: false, error: `Failed to load ${date}: ${e}` });
     }
+  },
+
+  loadSimulationFrame(frame) {
+    set({
+      sessionDate: '',
+      candles: frame.candles,
+      signals: [],
+      priorDayStats: null,
+      currentIndex: Math.max(0, frame.candles.length - 1),
+      isPlaying: false,
+      isLoading: false,
+      error: null,
+      isTickSimulation: true,
+      rangeBars: frame.rangeBars,
+      cvdBars: frame.cvdBars,
+      rangeCvdBars: frame.rangeCvdBars,
+      latestTickTime: frame.latestTickTime,
+      latestPrice: frame.latestPrice,
+    });
+  },
+
+  updateSimulationFrame(frame) {
+    set({
+      candles: frame.candles,
+      currentIndex: Math.max(0, frame.candles.length - 1),
+      rangeBars: frame.rangeBars,
+      cvdBars: frame.cvdBars,
+      rangeCvdBars: frame.rangeCvdBars,
+      latestTickTime: frame.latestTickTime,
+      latestPrice: frame.latestPrice,
+    });
+  },
+
+  leaveSimulation() {
+    set({
+      isTickSimulation: false,
+      rangeBars: [],
+      cvdBars: [],
+      rangeCvdBars: [],
+      latestTickTime: 0,
+      latestPrice: 0,
+      candles: [],
+      currentIndex: 0,
+      signals: [],
+      priorDayStats: null,
+      sessionDate: '',
+    });
   },
 
   play()  { set({ isPlaying: true }); },

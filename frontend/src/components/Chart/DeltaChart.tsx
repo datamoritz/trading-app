@@ -11,6 +11,7 @@ import { useReplayStore } from '@/stores/replayStore';
 import { useTimezoneStore, TZ_IANA, type TZ } from '@/stores/timezoneStore';
 import type { Candle, Timeframe } from '@/types/market';
 import { computeRangeBars } from '@/utils/rangeBars';
+import { aggregateCandles } from '@/utils/aggregateCandles';
 import { withWhitespace } from '@/utils/chartSeriesData';
 import { cn } from '@/lib/utils';
 
@@ -107,7 +108,13 @@ export function DeltaChart({
   const onChartReadyRef = useRef(onChartReady);
   onChartReadyRef.current = onChartReady;
 
-  const { candles, currentIndex } = useReplayStore();
+  const {
+    candles,
+    currentIndex,
+    isTickSimulation,
+    cvdBars,
+    rangeCvdBars,
+  } = useReplayStore();
   const { tz } = useTimezoneStore();
 
   const prevCandlesRef   = useRef<typeof candles | null>(null);
@@ -173,15 +180,27 @@ export function DeltaChart({
     prevCandlesRef.current   = candles;
     prevTimeframeRef.current = activeTimeframe;
 
-    const fullBars = computeCVDBars(candles, activeTimeframe);
-    const actualBars = computeCVDBars(candles.slice(0, currentIndex + 1), activeTimeframe);
-    const fullTimes = isRangeMode
-      ? candles.map((bar) => bar.time as Time)
-      : fullBars.map((bar) => bar.time);
-    const bars = withWhitespace(
-      actualBars satisfies CandlestickData[],
-      fullTimes,
-    );
+    const fullBars = isTickSimulation
+      ? (activeTimeframe === '22R'
+          ? rangeCvdBars
+          : aggregateCandles(cvdBars, activeTimeframe))
+      : computeCVDBars(candles, activeTimeframe);
+    const actualBars = isTickSimulation
+      ? fullBars
+      : computeCVDBars(candles.slice(0, currentIndex + 1), activeTimeframe);
+    const fullTimes: Time[] = isTickSimulation
+      ? fullBars.map((bar) => bar.time as Time)
+      : isRangeMode
+        ? candles.map((bar) => bar.time as Time)
+        : fullBars.map((bar) => bar.time as Time);
+    const actualChartBars = actualBars.map((bar) => ({
+      time: bar.time as Time,
+      open: bar.open,
+      high: bar.high,
+      low: bar.low,
+      close: bar.close,
+    })) satisfies CandlestickData[];
+    const bars = withWhitespace(actualChartBars, fullTimes);
 
     const chart = chartRef.current;
     const savedLogicalRange = !isRangeMode ? chart?.timeScale().getVisibleLogicalRange() ?? null : null;
@@ -215,7 +234,15 @@ export function DeltaChart({
     }
     prevBarCountRef.current = actualBars.length;
     prevIndexRef.current = currentIndex;
-  }, [currentIndex, candles, activeTimeframe, isRangeMode]);
+  }, [
+    currentIndex,
+    candles,
+    activeTimeframe,
+    isRangeMode,
+    isTickSimulation,
+    cvdBars,
+    rangeCvdBars,
+  ]);
 
   return (
     <div className="relative w-full h-full">

@@ -195,8 +195,8 @@ export function MobileChartStack({
       {showDelta && (
         <div className="h-28 shrink-0 border-t border-border">
           <DeltaChart
-            activeTimeframe="22R"
-            isRangeMode
+            activeTimeframe={timeframe}
+            isRangeMode={timeframe === '22R'}
             onToggleRangeMode={() => {}}
             onChartReady={handleDeltaChartReady}
             showRangeToggle={false}

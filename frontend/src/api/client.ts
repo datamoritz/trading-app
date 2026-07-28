@@ -2,11 +2,15 @@ import type { Candle } from '@/types/market';
 import type { Signal } from '@/types/signal';
 import type { Trade } from '@/types/trade';
 import type { PriorDayStats } from '@/types/indicators';
+import type { SimulationManifest, SimulationSession } from '@/types/simulation';
 
 const BASE = import.meta.env.VITE_API_BASE_URL ?? '/api';
 const MARKET_DATA_BASE =
   import.meta.env.VITE_MARKET_DATA_BASE_URL
   ?? (import.meta.env.PROD ? 'https://trading-data.moritzknodler.com/NQ' : undefined);
+const SIM_DATA_BASE =
+  import.meta.env.VITE_SIM_DATA_BASE_URL
+  ?? `${MARKET_DATA_BASE ?? 'https://trading-data.moritzknodler.com/NQ'}/simulations/large-candle/v1`;
 
 async function get<T>(url: string): Promise<T> {
   const res = await fetch(url);
@@ -54,4 +58,21 @@ export async function saveTrade(_trade: Trade): Promise<void> {
     headers: { 'Content-Type': 'application/json' },
     body: JSON.stringify(_trade),
   });
+}
+
+export async function fetchSimulationManifest(): Promise<SimulationManifest> {
+  return get<SimulationManifest>(`${SIM_DATA_BASE}/manifest.json`);
+}
+
+export async function fetchSimulationSession(sessionId: string): Promise<SimulationSession> {
+  const response = await fetch(`${SIM_DATA_BASE}/sessions/${sessionId}.json.gz`);
+  if (!response.ok) throw new Error(`Simulation session ${response.status}`);
+  if (!response.body) throw new Error('Simulation session response is empty');
+  if (typeof DecompressionStream === 'undefined') {
+    throw new Error('This browser is too old to open compressed simulation data');
+  }
+
+  const decompressed = response.body.pipeThrough(new DecompressionStream('gzip'));
+  const text = await new Response(decompressed).text();
+  return JSON.parse(text) as SimulationSession;
 }
