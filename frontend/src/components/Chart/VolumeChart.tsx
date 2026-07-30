@@ -176,7 +176,11 @@ export function VolumeChart({ activeTimeframe, showIBEnd, onChartReady }: Props)
     volSeriesRef.current.setData(volBars);
     maSeriesRef.current?.setData(maBars);
 
-    if (savedRange) {
+    if (isTickSimulation) {
+      requestAnimationFrame(() => {
+        try { chartRef.current?.timeScale().scrollToRealTime(); } catch { /* chart may be mid-unmount */ }
+      });
+    } else if (savedRange) {
       const revealedCount = actualVolBars.length;
       const previousCount = prevBarCountRef.current;
       const replayAdvanced = !fullReload && currentIndex > prevIndexRef.current;

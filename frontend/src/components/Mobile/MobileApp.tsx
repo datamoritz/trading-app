@@ -154,6 +154,13 @@ export function MobileApp({ simulationMode = false, onExit }: Props) {
   const drawdownRoom = equity - drawdownThreshold;
 
   const lastTrade = tradeLog[tradeLog.length - 1];
+  const tradeStatusLabel = openTrade?.status === 'draft'
+    ? 'DRAFT — NOT ACTIVE'
+    : openTrade?.status === 'pending'
+      ? 'LIMIT WORKING'
+      : openTrade
+        ? 'FILLED'
+        : '';
   const lastR = lastTrade
     ? rMultiple(lastTrade.result_points, lastTrade.entry_price, lastTrade.stop_price)
     : 0;
@@ -366,6 +373,23 @@ export function MobileApp({ simulationMode = false, onExit }: Props) {
           <div className="mb-2 text-xs text-gray-500">Loading session...</div>
         )}
 
+        {simulationMode && !openTrade && lastTrade && (
+          <div
+            className={cn(
+              'mb-2 flex items-center justify-between rounded border px-3 py-2 text-xs font-semibold',
+              (lastTrade.result_points ?? 0) >= 0
+                ? 'border-green-500/50 bg-green-500/10 text-green-300'
+                : 'border-red-500/50 bg-red-500/10 text-red-300',
+            )}
+          >
+            <span>{(lastTrade.result_points ?? 0) >= 0 ? 'WIN' : 'LOSS'}</span>
+            <span className="tabular-nums">
+              {(lastTrade.result_points ?? 0) >= 0 ? '+' : ''}
+              {fmt(lastTrade.result_points ?? 0)} pts
+            </span>
+          </div>
+        )}
+
         {showStats && (
           <div className="mb-2 grid grid-cols-4 gap-2 text-center">
             <div>
@@ -437,20 +461,24 @@ export function MobileApp({ simulationMode = false, onExit }: Props) {
               </button>
               <div className="min-w-0 flex-1 text-xs text-gray-400">
                 <div className="truncate">
-                  {openTrade.direction.toUpperCase()} · {openTrade.status ?? 'active'} · E {fmt(openTrade.entry_price)}
+                  {openTrade.direction.toUpperCase()} ·{' '}
+                  <span className={openTrade.status === 'draft' ? 'text-amber-300' : 'text-gray-300'}>
+                    {tradeStatusLabel}
+                  </span>
                 </div>
                 <div className="truncate">
-                  SL {fmt(openTrade.stop_price)} · TP {fmt(openTrade.target_price)}
+                  E {fmt(openTrade.entry_price)} · SL {fmt(openTrade.stop_price)} · TP {fmt(openTrade.target_price)}
                 </div>
               </div>
               {openTrade.status === 'draft' && (
                 <button
                   type="button"
                   onClick={() => currentCandle && submitTrade(currentCandle.time)}
-                  className="grid h-10 w-12 place-items-center rounded border border-blue-500/70 bg-blue-500/15 text-blue-300"
-                  aria-label="Submit trade"
+                  className="flex h-10 items-center gap-1.5 rounded border border-blue-500/70 bg-blue-500/15 px-3 text-xs font-semibold text-blue-300"
+                  aria-label="Place order"
                 >
-                  <Send size={16} />
+                  <Send size={14} />
+                  PLACE
                 </button>
               )}
               {openTrade.status !== 'active' && (

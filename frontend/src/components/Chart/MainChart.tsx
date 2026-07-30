@@ -309,7 +309,11 @@ export function MainChart({
     const savedRange = chartRef.current?.timeScale().getVisibleLogicalRange() ?? null;
     seriesRef.current.setData(mapped);
 
-    if (savedRange) {
+    if (isTickSimulation) {
+      requestAnimationFrame(() => {
+        try { chartRef.current?.timeScale().scrollToRealTime(); } catch { /* chart may be mid-unmount */ }
+      });
+    } else if (savedRange) {
       const revealedCount = mappedActual.length;
       const previousCount = prevBarCountRef.current;
       const replayAdvanced = !fullReload && currentIndex > prevIndexRef.current;
