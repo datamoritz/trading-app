@@ -81,25 +81,23 @@ export function ChartContainer({ onRemove, onAddChart }: Props) {
     cleanupSyncRef.current = null;
     if (charts.length < 2) return;
 
-    const handlers: Array<() => void> = charts.map((source, si) => () => {
+    const main = charts[0];
+    const targets = charts.slice(1);
+    const syncTargetsToMain = () => {
       if (syncingRef.current) return;
-      const range = source.timeScale().getVisibleLogicalRange() as LogicalRange | null;
+      const range = main.timeScale().getVisibleLogicalRange() as LogicalRange | null;
       if (!range) return;
       syncingRef.current = true;
-      charts.forEach((target, ti) => {
-        if (ti !== si) try { target.timeScale().setVisibleLogicalRange(range); } catch { /* chart may be mid-unmount */ }
+      targets.forEach((target) => {
+        try { target.timeScale().setVisibleLogicalRange(range); } catch { /* chart may be mid-unmount */ }
       });
       syncingRef.current = false;
-    });
+    };
 
-    charts.forEach((chart, i) => {
-      (chart.timeScale().subscribeVisibleLogicalRangeChange as (h: () => void) => void)(handlers[i]);
-    });
+    (main.timeScale().subscribeVisibleLogicalRangeChange as (h: () => void) => void)(syncTargetsToMain);
 
     cleanupSyncRef.current = () => {
-      charts.forEach((chart, i) => {
-        try { (chart.timeScale().unsubscribeVisibleLogicalRangeChange as (h: () => void) => void)(handlers[i]); } catch { /* chart may be mid-unmount */ }
-      });
+      try { (main.timeScale().unsubscribeVisibleLogicalRangeChange as (h: () => void) => void)(syncTargetsToMain); } catch { /* chart may be mid-unmount */ }
     };
   }
 

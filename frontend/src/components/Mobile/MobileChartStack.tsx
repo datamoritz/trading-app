@@ -39,37 +39,30 @@ export function MobileChartStack({
     cleanupSyncRef.current?.();
     cleanupSyncRef.current = null;
 
-    const charts = [mainChartRef.current, volumeChartRef.current].filter(
-      Boolean,
-    ) as IChartApi[];
-    if (charts.length < 2) return;
+    const main = mainChartRef.current;
+    const volume = volumeChartRef.current;
+    if (!main || !volume) return;
 
-    const handlers = charts.map((source, sourceIndex) => () => {
+    const syncVolumeToMain = () => {
       if (syncingRef.current) return;
-      const range = source.timeScale().getVisibleLogicalRange() as LogicalRange | null;
+      const range = main.timeScale().getVisibleLogicalRange() as LogicalRange | null;
       if (!range) return;
 
       syncingRef.current = true;
-      charts.forEach((target, targetIndex) => {
-        if (targetIndex === sourceIndex) return;
-        try { target.timeScale().setVisibleLogicalRange(range); } catch { /* chart may be mid-unmount */ }
-      });
+      try { volume.timeScale().setVisibleLogicalRange(range); } catch { /* chart may be mid-unmount */ }
       syncingRef.current = false;
-    });
+    };
 
-    charts.forEach((chart, index) => {
-      (chart.timeScale().subscribeVisibleLogicalRangeChange as (handler: () => void) => void)(handlers[index]);
-    });
+    (main.timeScale().subscribeVisibleLogicalRangeChange as (handler: () => void) => void)(syncVolumeToMain);
 
     cleanupSyncRef.current = () => {
-      charts.forEach((chart, index) => {
-        try {
-          (chart.timeScale().unsubscribeVisibleLogicalRangeChange as (handler: () => void) => void)(handlers[index]);
-        } catch {
-          /* chart may be mid-unmount */
-        }
-      });
+      try {
+        (main.timeScale().unsubscribeVisibleLogicalRangeChange as (handler: () => void) => void)(syncVolumeToMain);
+      } catch {
+        /* chart may be mid-unmount */
+      }
     };
+    requestAnimationFrame(syncVolumeToMain);
   }
 
   function applyDeltaTimeSync() {

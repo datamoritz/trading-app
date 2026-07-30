@@ -207,11 +207,7 @@ export function DeltaChart({
     const savedTimeRange = isRangeMode ? chart?.timeScale().getVisibleRange() ?? null : null;
     seriesRef.current.setData(bars);
 
-    if (isTickSimulation) {
-      requestAnimationFrame(() => {
-        try { chartRef.current?.timeScale().scrollToRealTime(); } catch { /* chart may be mid-unmount */ }
-      });
-    } else if (isRangeMode) {
+    if (isRangeMode) {
       if (savedTimeRange) {
         requestAnimationFrame(() => {
           try { chartRef.current?.timeScale().setVisibleRange(savedTimeRange); } catch { /* chart may be mid-unmount */ }

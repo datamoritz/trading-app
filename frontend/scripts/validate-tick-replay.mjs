@@ -42,6 +42,19 @@ try {
   );
   const atOneX = new TickReplayEngine(session, event);
   const atTenX = new TickReplayEngine(session, event);
+  const timestampProbe = new TickReplayEngine(session, event);
+
+  const assertNoRangeLookahead = (frame) => {
+    assert.ok(
+      frame.rangeBars.at(-1).time <= frame.latestTickTime + 0.001,
+      '22R bars drifted ahead of the latest replay tick',
+    );
+  };
+  assertNoRangeLookahead(timestampProbe.frame());
+  while (!timestampProbe.complete) {
+    timestampProbe.advanceBy(1_000, 1);
+    assertNoRangeLookahead(timestampProbe.frame());
+  }
 
   let oneXTickCount = 0;
   let tenXTickCount = 0;
@@ -57,12 +70,19 @@ try {
   assert.ok(frame.candles.length > 0);
   assert.ok(frame.rangeBars.length > 1);
   assert.equal(frame.rangeBars.length, frame.rangeCvdBars.length);
+  assertNoRangeLookahead(frame);
 
-  for (const bar of frame.rangeBars.slice(0, -1)) {
+  for (const [index, bar] of frame.rangeBars.slice(0, -1).entries()) {
     assert.ok(
       Math.abs(bar.high - bar.low - 5.5) < 1e-9,
       `Completed 22R bar has range ${bar.high - bar.low}`,
     );
+    if (index > 0) {
+      assert.ok(
+        bar.time > frame.rangeBars[index - 1].time,
+        '22R timestamps must be strictly increasing',
+      );
+    }
   }
 
   const replayTicks = session.ticks.filter(

@@ -176,9 +176,9 @@ export function VolumeChart({ activeTimeframe, showIBEnd, onChartReady }: Props)
     volSeriesRef.current.setData(volBars);
     maSeriesRef.current?.setData(maBars);
 
-    if (isTickSimulation) {
+    if (isTickSimulation && savedRange) {
       requestAnimationFrame(() => {
-        try { chartRef.current?.timeScale().scrollToRealTime(); } catch { /* chart may be mid-unmount */ }
+        try { chartRef.current?.timeScale().setVisibleLogicalRange(savedRange); } catch { /* chart may be mid-unmount */ }
       });
     } else if (savedRange) {
       const revealedCount = actualVolBars.length;

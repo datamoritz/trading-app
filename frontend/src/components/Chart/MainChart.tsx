@@ -11,6 +11,7 @@ import {
   type LineWidth,
   type CandlestickData,
   type Logical,
+  type LogicalRange,
   type MouseEventParams,
 } from 'lightweight-charts';
 import { useTimezoneStore, TZ_IANA, type TZ } from '@/stores/timezoneStore';
@@ -153,6 +154,12 @@ export function MainChart({
   const prevTimeframeRef = useRef(activeTimeframe);
   const prevBarCountRef  = useRef(0);
   const prevIndexRef     = useRef(currentIndex);
+  const activeTimeframeRef = useRef(activeTimeframe);
+  const manualTimeframesRef = useRef(new Set<Timeframe>());
+  const viewportByTimeframeRef = useRef<Partial<Record<Timeframe, LogicalRange>>>({});
+  const applyingViewportRef = useRef(false);
+  const viewportOperationRef = useRef(0);
+  activeTimeframeRef.current = activeTimeframe;
 
   // Keep openTradeRef current so the drag handler always sees the latest trade
   openTradeRef.current = openTrade;
@@ -252,6 +259,44 @@ export function MainChart({
     seriesRef.current = series;
     onChartReadyRef.current?.(chart, series);
 
+    let pointerStart: { x: number; y: number } | null = null;
+    const rememberManualViewport = () => {
+      viewportOperationRef.current += 1;
+      applyingViewportRef.current = false;
+      const timeframe = activeTimeframeRef.current;
+      manualTimeframesRef.current.add(timeframe);
+      const range = chart.timeScale().getVisibleLogicalRange();
+      if (range) viewportByTimeframeRef.current[timeframe] = { ...range };
+    };
+    const handlePointerDown = (event: PointerEvent) => {
+      pointerStart = { x: event.clientX, y: event.clientY };
+    };
+    const handlePointerMove = (event: PointerEvent) => {
+      if (
+        pointerStart
+        && Math.hypot(event.clientX - pointerStart.x, event.clientY - pointerStart.y) >= 4
+      ) {
+        rememberManualViewport();
+      }
+    };
+    const clearPointerStart = () => {
+      pointerStart = null;
+    };
+    const handleVisibleRangeChange = (range: LogicalRange | null) => {
+      if (!range || applyingViewportRef.current) return;
+      const timeframe = activeTimeframeRef.current;
+      if (manualTimeframesRef.current.has(timeframe)) {
+        viewportByTimeframeRef.current[timeframe] = { ...range };
+      }
+    };
+    containerRef.current.addEventListener('wheel', rememberManualViewport, { capture: true });
+    containerRef.current.addEventListener('dblclick', rememberManualViewport, { capture: true });
+    containerRef.current.addEventListener('pointerdown', handlePointerDown, { capture: true });
+    containerRef.current.addEventListener('pointermove', handlePointerMove, { capture: true });
+    containerRef.current.addEventListener('pointerup', clearPointerStart, { capture: true });
+    containerRef.current.addEventListener('pointercancel', clearPointerStart, { capture: true });
+    chart.timeScale().subscribeVisibleLogicalRangeChange(handleVisibleRangeChange);
+
     const observer = new ResizeObserver(() => {
       if (containerRef.current) {
         chart.resize(containerRef.current.clientWidth, containerRef.current.clientHeight);
@@ -261,6 +306,13 @@ export function MainChart({
 
     return () => {
       observer.disconnect();
+      containerRef.current?.removeEventListener('wheel', rememberManualViewport, { capture: true });
+      containerRef.current?.removeEventListener('dblclick', rememberManualViewport, { capture: true });
+      containerRef.current?.removeEventListener('pointerdown', handlePointerDown, { capture: true });
+      containerRef.current?.removeEventListener('pointermove', handlePointerMove, { capture: true });
+      containerRef.current?.removeEventListener('pointerup', clearPointerStart, { capture: true });
+      containerRef.current?.removeEventListener('pointercancel', clearPointerStart, { capture: true });
+      try { chart.timeScale().unsubscribeVisibleLogicalRangeChange(handleVisibleRangeChange); } catch { /* chart may be mid-unmount */ }
       chart.remove();
       chartRef.current = seriesRef.current = null;
       measurementRef.current = null;
@@ -289,6 +341,14 @@ export function MainChart({
   useEffect(() => {
     if (!seriesRef.current || candles.length === 0) return;
 
+    const previousTimeframe = prevTimeframeRef.current;
+    const savedRange = chartRef.current?.timeScale().getVisibleLogicalRange() ?? null;
+    if (previousTimeframe !== activeTimeframe && savedRange && manualTimeframesRef.current.has(previousTimeframe)) {
+      viewportByTimeframeRef.current[previousTimeframe] = { ...savedRange };
+    } else if (savedRange && manualTimeframesRef.current.has(activeTimeframe)) {
+      viewportByTimeframeRef.current[activeTimeframe] = { ...savedRange };
+    }
+
     const fullReload =
       prevCandlesRef.current !== candles || prevTimeframeRef.current !== activeTimeframe;
     prevCandlesRef.current   = candles;
@@ -306,12 +366,28 @@ export function MainChart({
     ) satisfies CandlestickData[];
     const mapped = withWhitespace(mappedActual, fullBars.map((bar) => bar.time as Time));
 
-    const savedRange = chartRef.current?.timeScale().getVisibleLogicalRange() ?? null;
+    const viewportOperation = viewportOperationRef.current + 1;
+    viewportOperationRef.current = viewportOperation;
+    applyingViewportRef.current = true;
     seriesRef.current.setData(mapped);
 
     if (isTickSimulation) {
       requestAnimationFrame(() => {
-        try { chartRef.current?.timeScale().scrollToRealTime(); } catch { /* chart may be mid-unmount */ }
+        if (viewportOperationRef.current !== viewportOperation) return;
+        const manualRange = manualTimeframesRef.current.has(activeTimeframe)
+          ? viewportByTimeframeRef.current[activeTimeframe]
+          : null;
+        try {
+          if (manualRange) chartRef.current?.timeScale().setVisibleLogicalRange(manualRange);
+          else chartRef.current?.timeScale().scrollToRealTime();
+        } catch {
+          /* chart may be mid-unmount */
+        }
+        requestAnimationFrame(() => {
+          if (viewportOperationRef.current === viewportOperation) {
+            applyingViewportRef.current = false;
+          }
+        });
       });
     } else if (savedRange) {
       const revealedCount = mappedActual.length;
@@ -329,8 +405,16 @@ export function MainChart({
           }
         : savedRange;
       requestAnimationFrame(() => {
+        if (viewportOperationRef.current !== viewportOperation) return;
         try { chartRef.current?.timeScale().setVisibleLogicalRange(range); } catch { /* chart may be mid-unmount */ }
+        requestAnimationFrame(() => {
+          if (viewportOperationRef.current === viewportOperation) {
+            applyingViewportRef.current = false;
+          }
+        });
       });
+    } else {
+      applyingViewportRef.current = false;
     }
     prevBarCountRef.current = mappedActual.length;
     prevIndexRef.current = currentIndex;

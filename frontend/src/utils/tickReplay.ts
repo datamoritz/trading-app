@@ -8,6 +8,7 @@ import type {
 
 const RANGE_POINTS = 22 * 0.25;
 const NANOSECONDS_PER_SECOND = 1_000_000_000;
+const RANGE_TIME_EPSILON_SECONDS = 0.000001;
 
 interface MutableRangeBar {
   time: number;
@@ -127,7 +128,7 @@ export class TickReplayEngine {
     this.latestTickTime = epochSeconds;
     this.latestPrice = price;
     this.updateMinuteBars(chartTime, price, size, delta, nextCumulativeDelta);
-    this.updateRangeBars(chartTime, price, size, delta, nextCumulativeDelta);
+    this.updateRangeBars(epochSeconds, price, size, delta, nextCumulativeDelta);
     this.cumulativeDelta = nextCumulativeDelta;
   }
 
@@ -229,7 +230,13 @@ export class TickReplayEngine {
   }
 
   private newRangeBar(time: number, price: number): MutableRangeBar {
-    const displayTime = Math.max(time, this.lastRangeTime + 1);
+    // Range bars share the exchange tick's real timestamp. A single price jump
+    // can close more than one range bar, so use only a sub-millisecond epsilon
+    // to keep chart timestamps strictly increasing without pushing bars into
+    // visibly future seconds.
+    const displayTime = time > this.lastRangeTime
+      ? time
+      : this.lastRangeTime + RANGE_TIME_EPSILON_SECONDS;
     this.lastRangeTime = displayTime;
     return {
       time: displayTime,
