@@ -7,6 +7,7 @@ type JournalTradeUpdate = Omit<JournalTrade, 'id' | 'createdAt' | 'updatedAt'>;
 
 interface JournalState {
   activeDate: string;
+  lastEntryTime: string | null;
   entries: JournalTrade[];
   setActiveDate: (date: string) => void;
   addTrade: (trade: NewJournalTrade) => JournalTrade;
@@ -27,6 +28,7 @@ export const useJournalStore = create<JournalState>()(
   persist(
     (set) => ({
       activeDate: localDateValue(),
+      lastEntryTime: null,
       entries: [],
 
       setActiveDate(activeDate) {
@@ -41,7 +43,7 @@ export const useJournalStore = create<JournalState>()(
           createdAt: now,
           updatedAt: now,
         };
-        set((state) => ({ entries: [...state.entries, entry] }));
+        set((state) => ({ entries: [...state.entries, entry], lastEntryTime: trade.time }));
         return entry;
       },
 
@@ -52,6 +54,7 @@ export const useJournalStore = create<JournalState>()(
               ? { ...entry, ...trade, updatedAt: Date.now() }
               : entry
           )),
+          lastEntryTime: trade.time,
         }));
       },
 
@@ -77,10 +80,25 @@ export const useJournalStore = create<JournalState>()(
     }),
     {
       name: 'nq-trade-journal-v1',
-      version: 2,
+      version: 3,
       storage: createJSONStorage(() => localStorage),
-      partialize: (state) => ({ activeDate: state.activeDate, entries: state.entries }),
-      migrate: (persistedState) => persistedState as JournalState,
+      partialize: (state) => ({
+        activeDate: state.activeDate,
+        lastEntryTime: state.lastEntryTime,
+        entries: state.entries,
+      }),
+      migrate: (persistedState) => {
+        const persisted = persistedState as Partial<JournalState>;
+        const entries = Array.isArray(persisted.entries) ? persisted.entries : [];
+        const mostRecentlySaved = entries
+          .slice()
+          .sort((a, b) => b.updatedAt - a.updatedAt)[0];
+        return {
+          ...persisted,
+          entries,
+          lastEntryTime: persisted.lastEntryTime ?? mostRecentlySaved?.time ?? null,
+        } as JournalState;
+      },
     },
   ),
 );

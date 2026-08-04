@@ -59,9 +59,9 @@ function browserStorageAvailable(): boolean {
   }
 }
 
-function emptyForm(): JournalForm {
+function emptyForm(time = currentMinute()): JournalForm {
   return {
-    time: currentMinute(),
+    time,
     direction: null,
     pnlPoints: '',
     priorCandleAtKeyLevel: false,
@@ -124,6 +124,7 @@ function YesNoCheck({
 export function TradeJournal({ onExit }: Props) {
   const {
     activeDate,
+    lastEntryTime,
     entries,
     setActiveDate,
     addTrade,
@@ -135,7 +136,7 @@ export function TradeJournal({ onExit }: Props) {
   const importInputRef = useRef<HTMLInputElement>(null);
   const formSectionRef = useRef<HTMLElement>(null);
   const [storageAvailable] = useState(browserStorageAvailable);
-  const [form, setForm] = useState<JournalForm>(emptyForm);
+  const [form, setForm] = useState<JournalForm>(() => emptyForm(lastEntryTime ?? currentMinute()));
   const [editingId, setEditingId] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(
     storageAvailable ? null : 'Local browser storage is unavailable. Enable site storage before logging trades.',
@@ -165,8 +166,8 @@ export function TradeJournal({ onExit }: Props) {
     setForm((previous) => ({ ...previous, [key]: value }));
   }
 
-  function resetEntryForm() {
-    setForm(emptyForm());
+  function resetEntryForm(time = useJournalStore.getState().lastEntryTime ?? currentMinute()) {
+    setForm(emptyForm(time));
     setEditingId(null);
     setError(null);
   }
@@ -350,7 +351,7 @@ export function TradeJournal({ onExit }: Props) {
                 {editingId ? 'Edit trade' : 'Add trade'}
               </h1>
               {editingId && (
-                <button type="button" onClick={resetEntryForm} className="text-[11px] text-gray-500 hover:text-gray-200">
+                <button type="button" onClick={() => resetEntryForm()} className="text-[11px] text-gray-500 hover:text-gray-200">
                   Cancel edit
                 </button>
               )}

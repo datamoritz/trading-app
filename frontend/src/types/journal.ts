@@ -8,6 +8,7 @@ export const JOURNAL_SETUP_OPTIONS = [
   'Large red → long',
   'Wick test',
   'IBH/IBL retest',
+  'Reject at key level',
   'Other',
 ] as const;
 
