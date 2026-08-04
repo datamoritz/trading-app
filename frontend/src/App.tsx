@@ -16,6 +16,9 @@ import { SimulationControls } from '@/components/Simulation/SimulationControls';
 import { SimulationOverlay } from '@/components/Simulation/SimulationOverlay';
 import { useSimulationStore } from '@/stores/simulationStore';
 import { useSimulationPlayback } from '@/hooks/useSimulationPlayback';
+import { TradeJournal } from '@/components/Journal/TradeJournal';
+
+type AppMode = 'standard' | 'simulation' | 'journal';
 
 function useReplayInterval(active: boolean) {
   const { isPlaying, speed, stepForward } = useReplayStore();
@@ -203,7 +206,7 @@ function DesktopApp({ simulationMode, onExit }: { simulationMode: boolean; onExi
 }
 
 export default function App() {
-  const [mode, setMode] = useState<'standard' | 'simulation' | null>(null);
+  const [mode, setMode] = useState<AppMode | null>(null);
   const path = window.location.pathname;
   const isMobile = path.startsWith('/mobile') || (import.meta.env.PROD && !path.startsWith('/desktop'));
   useSimulationPlayback(mode === 'simulation');
@@ -217,7 +220,7 @@ export default function App() {
     setMode(null);
   }
 
-  function chooseMode(nextMode: 'standard' | 'simulation') {
+  function chooseMode(nextMode: AppMode) {
     if (nextMode === 'simulation') {
       useReplayStore.setState({ isTickSimulation: true });
     }
@@ -225,6 +228,8 @@ export default function App() {
   }
 
   if (!mode) return <LaunchModeChooser onChoose={chooseMode} />;
+
+  if (mode === 'journal') return <TradeJournal onExit={exitToModes} />;
 
   if (isMobile) {
     return (
