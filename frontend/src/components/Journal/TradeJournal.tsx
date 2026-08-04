@@ -18,6 +18,7 @@ import {
   type JournalDirection,
   type JournalSetup,
   type JournalTrade,
+  type TakeRating,
 } from '@/types/journal';
 import {
   exportJournalBackup,
@@ -38,6 +39,7 @@ interface JournalForm {
   priorCandleClosedPastKeyLevel: boolean;
   keyLevel: string;
   setup: JournalSetup;
+  takeRating: TakeRating;
   comments: string;
 }
 
@@ -67,6 +69,7 @@ function emptyForm(): JournalForm {
     priorCandleClosedPastKeyLevel: false,
     keyLevel: '',
     setup: 'Other',
+    takeRating: 'maybe',
     comments: '',
   };
 }
@@ -194,6 +197,7 @@ export function TradeJournal({ onExit }: Props) {
       priorCandleClosedPastKeyLevel: form.priorCandleClosedPastKeyLevel,
       keyLevel: form.keyLevel.trim(),
       setup: form.setup,
+      takeRating: form.takeRating,
       comments: form.comments.trim(),
     };
     if (editingId) {
@@ -218,6 +222,7 @@ export function TradeJournal({ onExit }: Props) {
       priorCandleClosedPastKeyLevel: entry.priorCandleClosedPastKeyLevel,
       keyLevel: entry.keyLevel,
       setup: entry.setup,
+      takeRating: entry.takeRating ?? 'maybe',
       comments: entry.comments,
     });
     setError(null);
@@ -235,6 +240,7 @@ export function TradeJournal({ onExit }: Props) {
       priorCandleClosedPastKeyLevel: entry.priorCandleClosedPastKeyLevel,
       keyLevel: entry.keyLevel,
       setup: entry.setup,
+      takeRating: entry.takeRating,
       comments: entry.comments,
     });
     setNotice('Trade duplicated and saved locally.');
@@ -440,6 +446,35 @@ export function TradeJournal({ onExit }: Props) {
               </select>
             </label>
 
+            <div>
+              <div className="mb-1.5 text-[11px] font-medium uppercase tracking-wide text-gray-500">Would have taken?</div>
+              <div className="grid grid-cols-3 gap-2">
+                {([
+                  ['yes', 'Yes'],
+                  ['maybe', 'Maybe'],
+                  ['high-risk', 'High risk'],
+                ] as const).map(([rating, label]) => (
+                  <button
+                    key={rating}
+                    type="button"
+                    onClick={() => updateForm('takeRating', rating)}
+                    className={cn(
+                      'h-10 rounded-lg border text-xs font-semibold transition',
+                      form.takeRating === rating
+                        ? rating === 'yes'
+                          ? 'border-green-500 bg-green-500/15 text-green-300'
+                          : rating === 'high-risk'
+                            ? 'border-red-500 bg-red-500/15 text-red-300'
+                            : 'border-amber-500 bg-amber-500/15 text-amber-200'
+                        : 'border-border bg-surface text-gray-500 hover:border-gray-600 hover:text-gray-300',
+                    )}
+                  >
+                    {label}
+                  </button>
+                ))}
+              </div>
+            </div>
+
             <label className="block">
               <span className="mb-1.5 block text-[11px] font-medium uppercase tracking-wide text-gray-500">Comments</span>
               <textarea
@@ -561,6 +596,22 @@ export function TradeJournal({ onExit }: Props) {
                       <div className="flex flex-wrap items-baseline gap-x-3 gap-y-1">
                         <span className="text-sm font-semibold tabular-nums text-gray-100">{entry.time}</span>
                         <span className="text-xs text-gray-400">{entry.setup}</span>
+                        <span className={cn(
+                          'rounded border px-1.5 py-0.5 text-[9px] font-semibold uppercase',
+                          entry.takeRating === 'yes'
+                            ? 'border-green-500/40 bg-green-500/10 text-green-300'
+                            : entry.takeRating === 'high-risk'
+                              ? 'border-red-500/40 bg-red-500/10 text-red-300'
+                              : entry.takeRating === 'maybe'
+                                ? 'border-amber-500/40 bg-amber-500/10 text-amber-200'
+                                : 'border-border text-gray-600',
+                        )}>
+                          {entry.takeRating === 'high-risk'
+                            ? 'High risk'
+                            : entry.takeRating
+                              ? entry.takeRating
+                              : 'Unrated'}
+                        </span>
                         {entry.keyLevel && <span className="text-[11px] text-blue-300">@ {entry.keyLevel}</span>}
                       </div>
                     </div>

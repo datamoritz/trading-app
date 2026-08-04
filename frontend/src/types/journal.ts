@@ -1,4 +1,5 @@
 export type JournalDirection = 'long' | 'short';
+export type TakeRating = 'yes' | 'maybe' | 'high-risk';
 
 export const JOURNAL_SETUP_OPTIONS = [
   'Large green → short',
@@ -23,13 +24,14 @@ export interface JournalTrade {
   priorCandleClosedPastKeyLevel: boolean;
   keyLevel: string;
   setup: JournalSetup;
+  takeRating?: TakeRating;
   comments: string;
   createdAt: number;
   updatedAt: number;
 }
 
 export interface JournalBackup {
-  schemaVersion: 1;
+  schemaVersion: 2;
   exportedAt: string;
   entries: JournalTrade[];
 }

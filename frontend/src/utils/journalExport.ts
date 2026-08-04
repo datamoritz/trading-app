@@ -4,6 +4,7 @@ import {
   type JournalDirection,
   type JournalSetup,
   type JournalTrade,
+  type TakeRating,
 } from '@/types/journal';
 
 function downloadFile(contents: string, filename: string, type: string): void {
@@ -29,6 +30,13 @@ function csvCell(value: string | number | boolean): string {
   return `"${raw.replaceAll('"', '""')}"`;
 }
 
+function takeRatingLabel(rating: TakeRating | undefined): string {
+  if (rating === 'yes') return 'Yes';
+  if (rating === 'high-risk') return 'High risk';
+  if (rating === 'maybe') return 'Maybe';
+  return 'Unrated';
+}
+
 export function exportJournalCsv(entries: JournalTrade[]): void {
   const header = [
     'Date',
@@ -40,6 +48,7 @@ export function exportJournalCsv(entries: JournalTrade[]): void {
     'Prior candle closed past key level',
     'Key level',
     'Setup',
+    'Would have taken',
     'Comments',
   ];
   const rows = entries
@@ -55,6 +64,7 @@ export function exportJournalCsv(entries: JournalTrade[]): void {
       entry.priorCandleClosedPastKeyLevel,
       entry.keyLevel,
       entry.setup,
+      takeRatingLabel(entry.takeRating),
       entry.comments,
     ]);
   const csv = [header, ...rows].map((row) => row.map(csvCell).join(',')).join('\n');
@@ -63,7 +73,7 @@ export function exportJournalCsv(entries: JournalTrade[]): void {
 
 export function exportJournalBackup(entries: JournalTrade[]): void {
   const backup: JournalBackup = {
-    schemaVersion: 1,
+    schemaVersion: 2,
     exportedAt: new Date().toISOString(),
     entries,
   };
@@ -82,6 +92,10 @@ function isSetup(value: unknown): value is JournalSetup {
   return typeof value === 'string' && JOURNAL_SETUP_OPTIONS.includes(value as JournalSetup);
 }
 
+function isTakeRating(value: unknown): value is TakeRating {
+  return value === 'yes' || value === 'maybe' || value === 'high-risk';
+}
+
 function isJournalTrade(value: unknown): value is JournalTrade {
   if (!value || typeof value !== 'object') return false;
   const trade = value as Record<string, unknown>;
@@ -97,6 +111,7 @@ function isJournalTrade(value: unknown): value is JournalTrade {
     && typeof trade.priorCandleClosedPastKeyLevel === 'boolean'
     && typeof trade.keyLevel === 'string'
     && isSetup(trade.setup)
+    && (trade.takeRating === undefined || isTakeRating(trade.takeRating))
     && typeof trade.comments === 'string'
     && typeof trade.createdAt === 'number'
     && typeof trade.updatedAt === 'number'
@@ -107,7 +122,7 @@ export function parseJournalBackup(contents: string): JournalTrade[] {
   const parsed: unknown = JSON.parse(contents);
   if (!parsed || typeof parsed !== 'object') throw new Error('Backup file is not valid.');
   const backup = parsed as Record<string, unknown>;
-  if (backup.schemaVersion !== 1 || !Array.isArray(backup.entries)) {
+  if ((backup.schemaVersion !== 1 && backup.schemaVersion !== 2) || !Array.isArray(backup.entries)) {
     throw new Error('This is not an NQ Trade Journal backup.');
   }
   if (!backup.entries.every(isJournalTrade)) {

@@ -77,9 +77,10 @@ export const useJournalStore = create<JournalState>()(
     }),
     {
       name: 'nq-trade-journal-v1',
-      version: 1,
+      version: 2,
       storage: createJSONStorage(() => localStorage),
       partialize: (state) => ({ activeDate: state.activeDate, entries: state.entries }),
+      migrate: (persistedState) => persistedState as JournalState,
     },
   ),
 );
